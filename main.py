@@ -1,3 +1,4 @@
+
 import math
 import os
 import zlib
@@ -5,6 +6,12 @@ import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import min_weight_full_bipartite_matching
 from scipy.optimize import fsolve
+import copy
+
+class Node:
+    def __init__(self, data,counting):
+        self.str1=data
+        self.counting=counting
 
 #for k = 10 in SI
 def calcExactDistFromSi(t, synIn):
@@ -40,8 +47,71 @@ def SyntenyIndex_indels(Genom1, Genom2, k):
     if (total == 0):
       return 0,0
     syntenyindex = (1 / total) * t
+    return syntenyindex, total
 
    
+def calc_lz_distance(source,seq,flagGen,start):
+    count=start
+    if flagGen==0:
+        i=1
+        count=count+1
+    else:
+        seq=source+seq
+        i=len(source)+1
+   
+    subStr=seq[i]
+    while i<len(seq):
+        j=i
+        subStr=seq[j]
+        while subStr in seq[0:j]:
+            i=i+1
+            if i>len(seq):
+                break
+            subStr=seq[j:i+1]
+        count=count+1
+        i=i+1
+               
+    return count
+    #i=0
+    #while i<len(seq):
+    #    subStr=seq[i]
+    #    if subStr in dic and dic[subStr]==0:
+    #        dic[subStr]=1
+    #        i=i+1
+    #        continue
+    #    j=i
+    #    if flagGen==0:
+    #        while subStr in seq[0:j] or subStr in dic.keys():
+    #            i=i+1
+    #            if i>len(seq):
+    #                break
+    #            subStr=seq[j:i+1]
+    #        dic[subStr]=1
+    #        i=i+1
+    #    else:
+    #        while subStr in source or subStr in dic.keys():
+    #            i=i+1
+    #            if i>len(seq):
+    #                break
+    #            subStr=seq[j:i+1]
+    #        dic[subStr]=1
+    #        i=i+1
+    #count=sum(value==1 for value in dic.values())
+   
+
+def lz_distance(gen1,gen2,s,q):
+    sq=calc_lz_distance(gen1,gen2,1,s)
+    qs=calc_lz_distance(gen2,gen1,1,q)
+   
+   
+    #d=max(sq-s,qs-q)/max(sq,qs)
+   
+    #d=max(sq-s,qs-q)/max(s,q)
+    d=min(((sq-s)/q),((qs-q)/s))
+    return d
+
+
+
 
 def calc_ncd(genom1,genom2):
     compressed_str1=zlib.compress(genom1.encode())
@@ -56,8 +126,13 @@ def calc_ncd(genom1,genom2):
     return ncd
 
 def calculate_len_for_SI (arr, k,names):
-    siLength = [[0]*len(arr) for i in range(len(arr))]  
+    flag=0
    
+    siLength = [[0]*len(arr) for i in range(len(arr))]  
+    fileForNames=open("names.txt","w")
+    for name in range(len(names)):
+       fileForNames.write(names[name]+"\n")
+    fileForNames.close()
     for x in range (len(arr)):
         for y in range (x, len(arr)):
             if (x == y):
@@ -65,9 +140,10 @@ def calculate_len_for_SI (arr, k,names):
             else:
                 ncd=np.zeros((len(arr[x]), len(arr[y])))
                 for i in range(len(arr[x])):
+                    print("i=",i," x=",x," y=",y)
                     for j in range(len(arr[y])):
                         ncd[i][j]=calc_ncd(arr[x][i],arr[y][j])
-                        print("i=",i," j=",j," x=",x," y=",y)
+                       # lz[i][j]=lz_distance(arr[x][i].str1,arr[y][j].str1,arr[x][i].counting,arr[y][j].counting)
                 ncd1 = csr_matrix(ncd)
                 minWeight = min_weight_full_bipartite_matching(ncd1)[1]
                 if(len(arr[x])<len(arr[y])):
@@ -77,15 +153,15 @@ def calculate_len_for_SI (arr, k,names):
                     genomOrder1=np.arange(len(arr[y]))
                     genomOrder2=np.ones(len(arr[x]))*(-1)
                 for i in range(len(minWeight)):
-                    if(len(arr[x][i])<len(arr[y][minWeight[i]])):
-                        smaller=arr[x][i]
-                        bigger=arr[y][minWeight[i]]
-                    else:
-                        smaller=arr[y][minWeight[i]]
-                        bigger=arr[x][i]
-                    cutOff=0.1*(len(smaller)/len(bigger))*1.2+0.6*((len(bigger)-len(smaller))/len(bigger))
-                    if(ncd[i][minWeight[i]]<cutOff):
-                        genomOrder2[minWeight[i]]=i
+                    #if(len(arr[x][i])<len(arr[y][minWeight[i]])):
+                    #    smaller=arr[x][i]
+                    #    bigger=arr[y][minWeight[i]]
+                    #else:
+                    #    smaller=arr[y][minWeight[i]]
+                    #    bigger=arr[x][i]
+                    #cutOff=0.1*(len(smaller)/len(bigger))*1.2+0.6*((len(bigger)-len(smaller))/len(bigger))
+                    #if(ncd[i][minWeight[i]]<cutOff):
+                    genomOrder2[minWeight[i]]=i
                 result, total = SyntenyIndex_indels(list(genomOrder1), list(genomOrder2), k)
                 if (result == 0.0):
                     dist = []
@@ -101,7 +177,19 @@ def calculate_len_for_SI (arr, k,names):
 #             else:
 #               dist = fsolve(calcforsi, 1.0, args = result) #1.0 is the initial value for t  
                 siLength[x][y] = round(dist[0],6)
-                siLength[y][x] = round(dist[0],6)      
+                siLength[y][x] = round(dist[0],6)    
+                if(flag==0):
+                    fileForDistances=open("Distances2.txt","w")
+                    fileForDistances.write(str(siLength[x][y])+ "\t")
+                    flag=1
+                    fileForDistances.close()
+                else:
+                    fileForDistances=open("Distances2.txt","a")
+                    fileForDistances.write(str(siLength[x][y])+ "\t")
+                    fileForDistances.close()
+        fileForDistances=open("Distances2.txt","a")
+        fileForDistances.write("\n")
+        fileForDistances.close()
     newStr = str(len(arr)) + "\n"      
     for x in range (len(names)):
        newStr += names[x]
@@ -162,7 +250,7 @@ def createFilesForTreedist (n, scaleexp ,sizeofGenom,k,leaves,names):
 
 
 n=30
-folder_path="C:/Users/shayh/Documents/sapir/genoms"
+folder_path="/home/user/Desktop/sapir/genoms/"
 
 translate_table=str.maketrans('acgt','tgca')
 matrix_genes=[]
@@ -177,14 +265,17 @@ for file_name in file_list:
     content=content.split('\n')
     genes=content[0].split(',')
     names=content[1].split(',')
-    for i in range(len(names)-1):
+    for i in range(len(names)):
         if('(C)' in names[i]):
             temp=genes[i]
             print(len(temp))
             temp=temp.translate(translate_table)
             temp=temp[::-1]
-            print(len(temp))
+            #s=calc_lz_distance("", temp, 0,0)
             genes[i]=temp
+        else:
+            s=calc_lz_distance("", genes[i], 0,0)
+            genes[i]=genes[i]
     file1.close()        
     matrix_genes.append(genes)
     matrix_names.append(names)
